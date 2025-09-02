@@ -2,16 +2,14 @@ import { MongoClient } from "mongodb";
 
 const CONNECTION_URL = process.env.CONNECTION_URL;
 const DATABASE_NAME = process.env.DATABASE_NAME;
-const COLLECTION_NAME = "training_data"; 
-const ATLAS_VECTOR_INDEX_NAME = "vector_index_training"; 
+const COLLECTION_NAME = "training_data";
+const ATLAS_VECTOR_INDEX_NAME = "vector_index_training";
 
 let database;
 let collection;
 
 async function connectToDatabase() {
-    if (database && collection) {
-        return; 
-    }
+    if (database && collection) return;
     try {
         console.log("Initializing new database connection...");
         const client = new MongoClient(CONNECTION_URL);
@@ -21,7 +19,7 @@ async function connectToDatabase() {
         console.log("Database connection successful.");
     } catch (e) {
         console.error("Failed to connect to the database.", e);
-        throw e; 
+        throw e;
     }
 }
 
@@ -32,37 +30,35 @@ export default async function handler(req, res) {
     }
 
     try {
-        const { embedding } = req.body;
+        const { embeddings } = req.body;
 
-        if (!embedding || !Array.isArray(embedding)) {
-            return res.status(400).json({ error: "Request body must include an 'embedding' array." });
+        if (!embeddings || !Array.isArray(embeddings) || embeddings.length === 0) {
+            return res.status(400).json({ error: "Request body must include an 'embeddings' array with at least one vector." });
         }
-        
-        console.log(`Received embedding with ${embedding.length} dimensions.`);
+        const queryVector = embeddings[0]; 
+
+        console.log(`Received embedding with ${queryVector.length} dimensions.`);
 
         const searchPipeline = [
             {
                 '$vectorSearch': {
                     index: ATLAS_VECTOR_INDEX_NAME,
                     path: 'content_embedding',
-                    queryVector: embedding, 
+                    queryVector: queryVector, 
                     numCandidates: 150,
                     limit: 5
                 }
             },
             {
                 '$project': {
-                    '_id': 0,
-                    'title': 1,
-                    'url': 1,
-                    'score': { '$meta': 'vectorSearchScore' }
+                    '_id': 0, 'title': 1, 'url': 1, 'score': { '$meta': 'vectorSearchScore' }
                 }
             }
         ];
 
         await connectToDatabase();
         const results = await collection.aggregate(searchPipeline).toArray();
-        
+
         return res.status(200).json(results);
 
     } catch (err) {
